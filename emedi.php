@@ -18,12 +18,10 @@ if (!defined('ABSPATH')) {
 } 
 
 register_activation_hook(__FILE__, 'emedi_activate');
-function emedi_activate() {
-    // Activation code here
+function emedi_activate() { 
 }
 register_deactivation_hook(__FILE__, 'emedi_deactivate');
-function emedi_deactivate() {
-    // Deactivation code here
+function emedi_deactivate() { 
 }
 
 include_once plugin_dir_path(__FILE__) . 'includes/class-emedi-helper.php';
