@@ -30,38 +30,30 @@ include_once plugin_dir_path(__FILE__) . 'includes/Emedi_Temp_Product_Cleaner.ph
 
 
 const EMEDI_HOOK = 'emedi_test_logger';
-
-// 1) প্রতি ১ মিনিটের কাস্টম ইন্টারভ্যাল
+ 
 add_filter('cron_schedules', function ($s) {
     $s['every_minute'] = [
-        'interval' => 60,          // 60 সেকেন্ড
+        'interval' => 60,  
         'display'  => 'Every Minute' 
     ];
     return $s;
 });
-
-// 2) প্লাগিন লোডে Auto-(re)Schedule + minute-align
-add_action('plugins_loaded', function () {
-    // আগে থেকে শিডিউল আছে কি না দেখি
+ 
+add_action('plugins_loaded', function () { 
     $evt = wp_get_scheduled_event(EMEDI_HOOK);
+    $aligned_start = floor(time() / 60) * 60 + 5; 
 
-    // minute align: 12:00, 12:01, 12:02 ... + ছোট অফসেট
-    $aligned_start = floor(time() / 60) * 60 + 5;  // এখনকার মিনিট শুরু +5s
-
-    if (!$evt) {
-        // একদম নেই => নতুন করে সেট করুন
+    if (!$evt) { 
         wp_schedule_event($aligned_start, 'every_minute', EMEDI_HOOK);
         return;
     }
-
-    // যদি ভুল ইন্টারভ্যাল/ড্রিফ্ট ধরা পড়ে, রিশিডিউল করুন
+ 
     if ($evt->schedule !== 'every_minute' || ($evt->timestamp % 60) !== 5) {
         wp_unschedule_event($evt->timestamp, EMEDI_HOOK, $evt->args);
         wp_schedule_event($aligned_start, 'every_minute', EMEDI_HOOK);
     }
 });
-
-// 3) জব: লগে লিখবে
+ 
 add_action(EMEDI_HOOK, function () {
     error_log('EMEDI TEST LOGGER: run at ' . current_time('mysql'));
 });
