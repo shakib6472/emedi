@@ -34,9 +34,9 @@ const EMEDI_HOOK = 'emedi_test_logger';
 add_filter('cron_schedules', function ($s) {
     $s['every_minute'] = [
         'interval' => 60,  
-        'display'  => 'Every Minute' 
+        'display'  => 'Every Minute'  
     ];
-    return $s;
+    return $s; 
 });
  
 add_action('plugins_loaded', function () { 
