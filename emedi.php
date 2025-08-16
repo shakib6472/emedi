@@ -21,10 +21,11 @@ register_activation_hook(__FILE__, 'emedi_activate');
 function emedi_activate() { 
 }
 register_deactivation_hook(__FILE__, 'emedi_deactivate');
-function emedi_deactivate() { 
+function emedi_deactivate() {  
+    //deactivate
 }
 
-include_once plugin_dir_path(__FILE__) . 'includes/class-emedi-helper.php';
+include_once plugin_dir_path(__FILE__) . 'includes/class-emedi-helper.php'; 
 include_once plugin_dir_path(__FILE__) . 'includes/Emedi_Temp_Product_Cleaner.php';
 
 
