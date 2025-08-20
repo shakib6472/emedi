@@ -3,7 +3,7 @@
  * Plugin Name:      Emedi Helper Plugin
  * Plugin URI:        https://github.com/shakib6472/
  * Description:       This is a helper plugin for the Emedi website.
- * Version:           1.0.0
+ * Version:           1.1.1
  * Requires at least: 5.2
  * Requires PHP:      7.2
  * Author:            Shakib Shown
@@ -15,46 +15,74 @@
  */
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
-} 
+}
 
 register_activation_hook(__FILE__, 'emedi_activate');
-function emedi_activate() { 
+function emedi_activate()
+{
+    add_rewrite_endpoint('my-membership', EP_PAGES);
+    flush_rewrite_rules();
 }
 register_deactivation_hook(__FILE__, 'emedi_deactivate');
-function emedi_deactivate() {  
+function emedi_deactivate()
+{
     //deactivate
+    flush_rewrite_rules();
 }
 
-include_once plugin_dir_path(__FILE__) . 'includes/class-emedi-helper.php'; 
+// enques assets
+function emedi_enqueue_assets()
+{
+    // Enqueue your styles and scripts here
+    //jquery
+    wp_enqueue_script('jquery');
+    wp_enqueue_script('emedi-scripts', plugin_dir_url(__FILE__) . 'assets/script.js', ['jquery'], null, true);
+    wp_enqueue_style(
+        'emedi-tailwind',
+        'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
+        [],
+        '2.2.19'
+    );
+    //localize the script to send ajax, home, pricing page url
+    wp_localize_script('emedi-scripts', 'emedi_vars', [
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'home_url' => home_url(),
+        'pricing_url' => home_url('/pricing'),
+    ]);
+}
+add_action('wp_enqueue_scripts', 'emedi_enqueue_assets');
+
+
+include_once plugin_dir_path(__FILE__) . 'includes/class-emedi-helper.php';
 include_once plugin_dir_path(__FILE__) . 'includes/Emedi_Temp_Product_Cleaner.php';
 
 
 
 const EMEDI_HOOK = 'emedi_test_logger';
- 
+
 add_filter('cron_schedules', function ($s) {
     $s['every_minute'] = [
-        'interval' => 60,  
-        'display'  => 'Every Minute'  
+        'interval' => 60,
+        'display' => 'Every Minute'
     ];
-    return $s; 
+    return $s;
 });
- 
-add_action('plugins_loaded', function () { 
-    $evt = wp_get_scheduled_event(EMEDI_HOOK);
-    $aligned_start = floor(time() / 60) * 60 + 5; 
 
-    if (!$evt) { 
+add_action('plugins_loaded', function () {
+    $evt = wp_get_scheduled_event(EMEDI_HOOK);
+    $aligned_start = floor(time() / 60) * 60 + 5;
+
+    if (!$evt) {
         wp_schedule_event($aligned_start, 'every_minute', EMEDI_HOOK);
         return;
     }
- 
+
     if ($evt->schedule !== 'every_minute' || ($evt->timestamp % 60) !== 5) {
         wp_unschedule_event($evt->timestamp, EMEDI_HOOK, $evt->args);
         wp_schedule_event($aligned_start, 'every_minute', EMEDI_HOOK);
     }
 });
- 
+
 add_action(EMEDI_HOOK, function () {
     error_log('EMEDI TEST LOGGER: run at ' . current_time('mysql'));
 });
@@ -66,4 +94,4 @@ register_deactivation_hook(__FILE__, function () {
     }
 });
 
- 
+

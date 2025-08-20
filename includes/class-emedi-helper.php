@@ -8,17 +8,15 @@ class Emedi_Helper
         add_action('fluentform/submission_inserted', [$this, 'emedi_fluent_form_submission'], 20, 3);
         add_filter('woocommerce_get_item_data', [$this, 'add_cart_item_data'], 10, 2);
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'add_order_item_meta'], 10, 4);
-
-        // সফল পেমেন্টে (অনেক গেটওয়ে এখানে ফায়ার করে)
         add_action('woocommerce_payment_complete', [$this, 'emedi_bind_temp_products_to_order']);
-        // যেসব অর্ডারে payment_complete ফায়ার নাও হতে পারে (BACS/COD), সেফটি হিসেবে:
         add_action('woocommerce_order_status_processing', [$this, 'emedi_bind_temp_products_to_order']);
         add_action('woocommerce_order_status_completed', [$this, 'emedi_bind_temp_products_to_order']);
-        // Hook this once (e.g., in your class constructor)
         add_filter('learndash_profile_stats', [$this, 'add_membership_stats'], 20, 2);
 
-
-
+        // My Membership tab: endpoint, menu, renderer, styles
+        add_action('init', [$this, 'register_my_membership_endpoint']);
+        add_filter('woocommerce_account_menu_items', [$this, 'add_my_membership_tab']);
+        add_action('woocommerce_account_my-membership_endpoint', [$this, 'render_my_membership_tab']);
     }
     public function emedi_fluent_form_submission($entryId, $formData, $form)
     {
@@ -222,8 +220,6 @@ class Emedi_Helper
             error_log('[EMEDI] bind_temp_products_to_order: DONE (no items processed) | order_id=' . $order_id);
         }
     }
-
-
     // Always keep code comments in English
     public function add_membership_stats($stats, $user_id)
     {
@@ -279,8 +275,6 @@ class Emedi_Helper
 
         return $stats;
     }
-
- 
     private function unenroll_user_from_courses($user_id)
     {
         // Log start
@@ -297,7 +291,7 @@ class Emedi_Helper
         if (empty($enrolled_courses)) {
             error_log("[EMEDI] No enrolled courses found for user_id={$user_id}");
             return;
-        } 
+        }
         // Loop through each enrolled course and remove access
         foreach ($enrolled_courses as $course_id) {
             ld_update_course_access($user_id, $course_id, true); // true = remove
@@ -306,6 +300,205 @@ class Emedi_Helper
 
         error_log("[EMEDI] Completed unenrollment for user_id={$user_id}");
     }
+
+    /**
+     * Register WooCommerce My Account endpoint: /my-account/my-membership
+     */
+    public function register_my_membership_endpoint()
+    {
+        // Register endpoint for pages (WooCommerce account is a page)
+        add_rewrite_endpoint('my-membership', EP_PAGES);
+    }
+
+    /**
+     * Add "My Membership" item to My Account menu.
+     * Places the tab after "Dashboard".
+     */
+    public function add_my_membership_tab($items)
+    {
+        if (!is_array($items))
+            return $items;
+
+        $new = [];
+        $inserted = false;
+
+        foreach ($items as $key => $label) {
+            $new[$key] = $label;
+
+            // Insert after Dashboard
+            if (!$inserted && $key === 'dashboard') {
+                $new['my-membership'] = __('My Membership', 'emedi');
+                $inserted = true;
+            }
+        }
+
+        // Fallback: if dashboard wasn't found, append at the end
+        if (!$inserted) {
+            $new['my-membership'] = __('My Membership', 'emedi');
+        }
+
+        return $new;
+    }
+ 
+
+    /**
+     * Renderer for the "My Membership" tab content.
+     * Uses user meta set elsewhere in this plugin.
+     */
+    public function render_my_membership_tab()
+    {
+        if (!is_user_logged_in()) {
+            echo '<div class="max-w-3xl mx-auto p-6">
+                    <div class="rounded-2xl border border-gray-200 p-8 text-center">
+                        <h2 class="text-2xl font-semibold mb-2">You are not logged in</h2>
+                        <p class="text-gray-600">Please log in to view your membership details.</p>
+                    </div>
+                 </div>';
+            return;
+        }
+
+        $user_id = get_current_user_id();
+
+        // Pull membership meta (set during order binding)
+        $membership_start = (int) get_user_meta($user_id, 'membership_start', true);
+        $membership_duration_days = (int) get_user_meta($user_id, 'membership_duration_days', true);
+        $membership_expires_at = (int) get_user_meta($user_id, 'membership_expires_at', true);
+
+        $has_membership = ($membership_duration_days > 0 && $membership_start > 0);
+
+        // Compute status
+        $now = time();
+        $status = 'none'; // none | active | expiring | expired
+        $days_left = 0;
+
+        if ($has_membership) {
+            $running_time = $now - $membership_start;
+            $running_days = (int) floor($running_time / DAY_IN_SECONDS);
+            $days_left = max(0, $membership_duration_days - $running_days);
+
+            if ($days_left <= 0) {
+                $status = 'expired';
+            } elseif ($days_left <= 3) {
+                $status = 'expiring';
+            } else {
+                $status = 'active';
+            }
+        }
+
+        $pricing_url = home_url('/pricing');
+
+        // Tailwind badge classes
+        $badge_map = [
+            'none' => 'bg-gray-100 text-gray-800',
+            'active' => 'bg-green-100 text-green-800',
+            'expiring' => 'bg-yellow-100 text-yellow-800',
+            'expired' => 'bg-red-100 text-red-800',
+        ];
+
+        $badge_text = [
+            'none' => __('No Membership', 'emedi'),
+            'active' => __('Active', 'emedi'),
+            'expiring' => __('Expiring Soon', 'emedi'),
+            'expired' => __('Expired', 'emedi'),
+        ];
+
+        // Date formatting
+        $start_str = $membership_start ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $membership_start) : '—';
+        $expire_str = $membership_expires_at ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $membership_expires_at) : '—';
+
+        echo '<div class="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">';
+
+        // Header Card
+        echo '<div class="rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8 mb-6">';
+        echo '  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">';
+        echo '      <div>';
+        echo '          <h1 class="text-2xl sm:text-3xl font-semibold">My Membership</h1>';
+        echo '          <p class="text-gray-600 mt-1">View the status and details of your course access.</p>';
+        echo '      </div>';
+        echo '      <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ' . esc_attr($badge_map[$status]) . '">'
+            . esc_html($badge_text[$status]) .
+            '</span>';
+        echo '  </div>';
+        echo '</div>';
+
+        if ($status === 'none') {
+            // No membership purchased
+            echo '<div class="rounded-2xl border border-dashed border-gray-300 p-8 text-center">';
+            echo '  <h2 class="text-xl font-semibold mb-2">You don\'t have a membership yet</h2>';
+            echo '  <p class="text-gray-600 mb-5">Please purchase a membership to access courses.</p>';
+            echo '  <a href="' . esc_url($pricing_url) . '" class="inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-medium border border-transparent bg-gray-900 text-white hover:opacity-90 transition">Go to Pricing</a>';
+            echo '</div>';
+
+            echo '</div>'; // container
+            return;
+        }
+
+        if ($status === 'expired') {
+            // Membership expired
+            echo '<div class="rounded-2xl border border-red-200 bg-red-50 p-6 mb-6">';
+            echo '  <p class="text-red-800">Your membership has expired. Renew to regain access to your courses.</p>';
+            echo '</div>';
+        } elseif ($status === 'expiring') {
+            // Membership expiring soon
+            echo '<div class="rounded-2xl border border-yellow-200 bg-yellow-50 p-6 mb-6">';
+            echo '  <p class="text-yellow-800">Your membership is expiring soon. ' . intval($days_left) . ' day(s) left.</p>';
+            echo '</div>';
+        }
+
+        // Details grid
+        echo '<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">';
+        echo '  <div class="rounded-2xl border border-gray-200 p-5">';
+        echo '      <div class="text-sm text-gray-500">Started</div>';
+        echo '      <div class="text-lg font-semibold mt-1">' . esc_html($start_str) . '</div>';
+        echo '  </div>';
+        echo '  <div class="rounded-2xl border border-gray-200 p-5">';
+        echo '      <div class="text-sm text-gray-500">Duration</div>';
+        echo '      <div class="text-lg font-semibold mt-1">' . intval($membership_duration_days) . ' day(s)</div>';
+        echo '  </div>';
+        echo '  <div class="rounded-2xl border border-gray-200 p-5">';
+        echo '      <div class="text-sm text-gray-500">Expires</div>';
+        echo '      <div class="text-lg font-semibold mt-1">' . esc_html($expire_str) . '</div>';
+        echo '  </div>';
+        echo '</div>';
+
+        // Days left & CTA
+        if ($status === 'active' || $status === 'expiring') {
+            echo '<div class="rounded-2xl border border-gray-200 p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">';
+            echo '  <div class="text-gray-800"><span class="font-semibold">' . intval($days_left) . ' day(s)</span> left in your membership.</div>';
+            echo '  <a href="' . esc_url($pricing_url) . '" class="inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-medium border border-gray-300 hover:bg-gray-50 transition">Extend / Upgrade</a>';
+            echo '</div>';
+        } else {
+            echo '<div class="text-center mb-6">';
+            echo '  <a href="' . esc_url($pricing_url) . '" class="inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-medium border border-transparent bg-gray-900 text-white hover:opacity-90 transition">Renew Membership</a>';
+            echo '</div>';
+        }
+
+        // (Optional) Show enrolled course list via LearnDash
+        if (function_exists('ld_get_mycourses')) {
+            $courses = ld_get_mycourses($user_id);
+            echo '<div class="rounded-2xl border border-gray-200 p-6">';
+            echo '  <h3 class="text-lg font-semibold mb-3">Your Courses</h3>';
+            if (!empty($courses)) {
+                echo '  <ul class="space-y-2">';
+                foreach ($courses as $cid) {
+                    $title = get_the_title($cid);
+                    $url = get_permalink($cid);
+                    echo '<li class="flex items-center justify-between rounded-xl border border-gray-100 p-3">';
+                    echo '  <span class="text-gray-800">' . esc_html($title) . '</span>';
+                    echo '  <a class="text-sm underline hover:no-underline" href="' . esc_url($url) . '">View</a>';
+                    echo '</li>';
+                }
+                echo '  </ul>';
+            } else {
+                echo '  <p class="text-gray-600">No courses found for this membership.</p>';
+            }
+            echo '</div>';
+        }
+
+        echo '</div>'; // container end
+    }
+
+
 
 }
 
