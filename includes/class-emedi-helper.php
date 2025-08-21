@@ -32,8 +32,7 @@ class Emedi_Helper
             if ($course) {
                 $course_names[] = $course->post_title;
             }
-        }
-        // $product_id = 986;
+        } 
         // set product Title
         $product_title = $total_course . ' Course For ' . $duration;
         // set product price
