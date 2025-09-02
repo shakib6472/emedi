@@ -54,6 +54,7 @@ add_action('wp_enqueue_scripts', 'emedi_enqueue_assets');
 
 
 include_once plugin_dir_path(__FILE__) . 'includes/class-emedi-helper.php';
+include_once plugin_dir_path(__FILE__) . 'includes/class-shortcodes.php';
 include_once plugin_dir_path(__FILE__) . 'includes/Emedi_Temp_Product_Cleaner.php';
 
 
