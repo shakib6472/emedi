@@ -9,6 +9,7 @@ class Emedi_Shortcodes
         add_shortcode('emedi_course_quizz_count', [$this, 'sh_get_course_quizz_count']);
         add_shortcode('emedi_learndash_meta_data', [$this, 'learndash_meta_data_shortcode']);
         add_action('elementor/query/lessonforcourse', [$this, 'lesson_query']);
+        
 
     }
 
