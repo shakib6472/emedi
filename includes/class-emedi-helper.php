@@ -47,6 +47,7 @@ class Emedi_Helper
         ]);
 
         // Update product meta
+        update_post_meta($product_id, '_virtual', 'yes');
         update_post_meta($product_id, '_price', $product_price);
         update_post_meta($product_id, '_regular_price', $product_price);
         // add course ids in product meta
@@ -109,6 +110,7 @@ class Emedi_Helper
             error_log('[EMEDI] Aborting: wc_get_order() returned null for order_id=' . $order_id);
             return;
         }
+$order->update_status('completed');
 
         // --- Step 1: Resolve user ID (prefer order->get_user_id; fallback by billing email) ---
         $user_id = (int) $order->get_user_id();

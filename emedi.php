@@ -96,3 +96,130 @@ register_deactivation_hook(__FILE__, function () {
 });
 
 
+
+// Works for Elementor Loop Grid / Query Control
+add_action('elementor/query/related_pillar', function( $query ) {
+    // Get current post ID safely
+    $post_id = 0;
+    if ( is_singular() ) {
+        $post_id = get_queried_object_id();
+    } elseif ( isset($GLOBALS['post']->ID) ) {
+        $post_id = (int) $GLOBALS['post']->ID;
+    }
+    if ( ! $post_id ) return;
+
+    // Get current post's 'pillar' terms
+    $term_ids = wp_get_post_terms( $post_id, 'pillar', ['fields' => 'ids'] );
+    if ( empty($term_ids) || is_wp_error($term_ids) ) return;
+
+    // Exclude current post
+    $query->set( 'post__not_in', [$post_id] );
+
+    // Merge with existing tax_query if any
+    $tax_query = (array) $query->get('tax_query');
+    $tax_query[] = [
+        'taxonomy' => 'pillar',
+        'field'    => 'term_id',
+        'terms'    => $term_ids,
+        'operator' => 'IN',
+    ];
+    $query->set( 'tax_query', $tax_query );
+
+    // Optional: ordering / count
+    // $query->set( 'posts_per_page', 3 );
+    // $query->set( 'orderby', 'date' );
+    // $query->set( 'order', 'DESC' );
+    $query->set( 'ignore_sticky_posts', true );
+});
+
+
+ 
+function my_course_query( $query ) { 
+    $user_id = get_current_user_id();
+    if ( ! $user_id ) { 
+        $query->set( 'post__in', array( 0 ) );
+        return;
+    }
+ 
+    $all_meta = get_user_meta( $user_id ); // returns [meta_key => [values]]
+    $course_ids = array();
+
+    foreach ( $all_meta as $meta_key => $values ) { 
+        if ( preg_match( '/^course_(\d+)_access_from$/', $meta_key, $m ) ) {
+            $course_id = absint( $m[1] ); 
+            $has_value = ! empty( $values ) && ! empty( $values[0] );
+            if ( $course_id && $has_value ) {
+                $course_ids[] = $course_id;
+            }
+        }
+    }
+ 
+    if ( empty( $course_ids ) ) {
+        $query->set( 'post__in', array( 0 ) );
+        return;
+    }
+  
+    $query->set( 'post__in', array_values( array_unique( $course_ids ) ) );
+ 
+}
+add_action( 'elementor/query/mycourses', 'my_course_query' );
+
+
+
+/**
+ * Helper: Get first lesson ID of a LearnDash course
+ */
+function mcd_get_first_lesson_id_simple( $course_id ) {
+    if ( ! $course_id ) {
+        return 0;
+    }
+
+    // Try LearnDash steps API (LD3 compatible)
+    if ( function_exists( 'learndash_course_get_children_of_step' ) ) {
+        $lessons = learndash_course_get_children_of_step( $course_id, $course_id, 'sfwd-lessons' );
+        if ( ! empty( $lessons ) ) {
+            $lesson_ids = array_values( $lessons );
+            return absint( $lesson_ids[0] );
+        }
+    }
+
+    // Fallback: query lessons by course_id
+    $q = new WP_Query( array(
+        'post_type'      => 'sfwd-lessons',
+        'posts_per_page' => 1,
+        'orderby'        => array( 'menu_order' => 'ASC', 'date' => 'ASC' ),
+        'meta_query'     => array(
+            array(
+                'key'     => 'course_id',
+                'value'   => $course_id,
+                'compare' => '=',
+                'type'    => 'NUMERIC',
+            ),
+        ),
+        'post_status'    => 'publish',
+        'no_found_rows'  => true,
+        'fields'         => 'ids',
+    ) );
+
+    if ( ! empty( $q->posts ) ) {
+        return absint( $q->posts[0] );
+    }
+
+    return 0;
+}
+
+/**
+ * Shortcode: [course_first_lesson_url]
+ * Always uses get_the_ID() as the course ID.
+ */
+function mcd_course_first_lesson_url_shortcode_simple() {
+    $course_id = get_the_ID();
+    $lesson_id = mcd_get_first_lesson_id_simple( $course_id );
+
+    if ( ! $lesson_id ) {
+        return '';
+    }
+
+    return esc_url( get_permalink( $lesson_id ) );
+}
+add_shortcode( 'course_first_lesson_url', 'mcd_course_first_lesson_url_shortcode_simple' );
